@@ -1,0 +1,7 @@
+hostname: charger-utilization-knowledge-base.cl5rvsp1ebrk.us-west-2.rds.amazonaws.com
+port: 5432
+
+users:
+  postgres: postgres
+  cse_stakeholders: cse_read_only
+  client_stakeholders: client_read_only
