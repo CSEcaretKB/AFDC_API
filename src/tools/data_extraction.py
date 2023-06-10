@@ -77,6 +77,11 @@ class DataExtractor:
                                               orient='index').astype(str)
 
     def format_dataframes(self):
+        print(f'\n--- FORMATTING DATA IN STATION AND EVSE DATAFRAMES ---')
+        # Replace None values and 'nan' strings with NaN
+        self.evse_df = self.evse_df.replace(to_replace=[None, 'nan', 'None'],
+                                            value=np.nan)
+
         # Replace None values and 'nan' strings with NaN
         self.station_df = self.station_df.replace(to_replace=[None, 'nan', 'None'],
                                                   value=np.nan)
@@ -153,11 +158,6 @@ class DataExtractor:
                                            geometry=gpd.points_from_xy(x=self.station_df.longitude,
                                                                        y=self.station_df.latitude),
                                            crs=self.crs)
-
-        print(self.station_df.info())
-
-        # self.station_df.to_csv('Station_DF.csv', index=False)
-        # self.evse_df.to_csv('EVSE_DF.csv', index=False)
 
     @staticmethod
     def state_name_formatting(dataframe, df_col):
@@ -417,9 +417,3 @@ class DataExtractor:
 
         return dataframe
 
-    # @staticmethod
-    # def list_to_string_concatenation(cell_value):
-    #     try:
-    #         return '; '.join(map(str, cell_value))
-    #     except TypeError:
-    #         return np.nan
