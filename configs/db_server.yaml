@@ -1,4 +1,5 @@
-hostname: cse-core-data.cl5rvsp1ebrk.us-west-2.rds.amazonaws.com
+hostname: charger-utilization-knowledge-base.cl5rvsp1ebrk.us-west-2.rds.amazonaws.com
+#cse-core-data.cl5rvsp1ebrk.us-west-2.rds.amazonaws.com
 # charger-utilization-knowledge-base.cl5rvsp1ebrk.us-west-2.rds.amazonaws.com
 port: 5432
 
