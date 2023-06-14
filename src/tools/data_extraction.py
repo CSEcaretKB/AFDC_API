@@ -106,11 +106,13 @@ class DataExtractor:
         date_cols = ['open_date', 'expected_date', 'date_last_confirmed']
         for col in date_cols:
             self.station_df[col] = pd.to_datetime(self.station_df[col],
-                                                  infer_datetime_format=True)
+                                                  infer_datetime_format=True,
+                                                  errors='coerce')
 
         # Convert Datetime to UTC
         self.station_df['updated_at'] = pd.to_datetime(self.station_df['updated_at'],
-                                                       infer_datetime_format=True).dt.tz_convert('UTC')
+                                                       infer_datetime_format=True,
+                                                       errors='coerce').dt.tz_convert('UTC')
 
         # Convert strings to float
         float_cols = ['latitude', 'longitude']

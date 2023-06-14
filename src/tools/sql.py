@@ -6,6 +6,7 @@ import yaml
 from tqdm import tqdm
 import os
 from src.tools.db_structure import DatabaseStructure
+from src.tools.db_connection import DatabaseConnection
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
@@ -51,60 +52,80 @@ class SQL:
         users = [x for x in self.db_configs.keys() if x != 'postgres']
         for user in users:
 
-            conn = self.connect_db_server(user=self.db_configs[self.admin_user])
+            for user in users:
 
-            if conn is not None:
-                conn.autocommit = True
-                cur = conn.cursor()
+                admin_configs = self.db_configs[self.admin_user]
 
-                # Create new user (if user doesn't exist)
-                stmt = psysql.SQL("""SELECT EXISTS( SELECT  1
-                                                    FROM    pg_roles
-                                                    WHERE   rolname={username}
-                                                    );""").format(username=psysql.Literal(user))
-                cur.execute(stmt)
-                user_exists = cur.fetchone()[0]
+                with DatabaseConnection(host=admin_configs['hostname'],
+                                        database=None,
+                                        port=admin_configs['port'],
+                                        user=admin_configs['username'],
+                                        password=admin_configs['password']) as conn:
 
-                if not user_exists:
-                    stmt = psysql.SQL("""CREATE USER {username} WITH PASSWORD {password};""") \
-                        .format(username=psysql.Identifier(user),
-                                password=psysql.Literal(f'{user}_{admin_password}'))
-                    cur.execute(stmt)
+                    if conn is not None:
+                        conn.autocommit = True
+                        cur = conn.cursor()
 
-                # Grant connect access
-                # for client, database in self.db_names.items():
-                stmt = psysql.SQL("""GRANT CONNECT ON DATABASE {database} TO {username};""") \
-                    .format(database=psysql.Identifier(self.database),
-                            username=psysql.Identifier(user))
-                cur.execute(stmt)
+                        # Create new user (if user doesn't exist)
+                        stmt = psysql.SQL("""SELECT EXISTS( SELECT  1
+                                                                    FROM    pg_roles
+                                                                    WHERE   rolname={username}
+                                                                    );""").format(username=psysql.Literal(user))
 
-                conn.close()
+                        cur.execute(stmt)
+                        # conn.commit()
+                        user_exists = cur.fetchone()[0]
+
+                        if not user_exists:
+                            stmt = psysql.SQL("""CREATE USER {username} WITH PASSWORD {password};""") \
+ \
+                                .format(username=psysql.Identifier(user),
+                                        password=psysql.Literal(f'{user}_{admin_password}'))
+                        cur.execute(stmt)
+                        # conn.commit()
+
+                    # Grant connect access
+                    # for client, database in self.db_names.items():
+                        stmt = psysql.SQL("""GRANT CONNECT ON DATABASE {database} TO {username};""") \
+                            .format(database=psysql.Identifier(self.database),
+                                    username=psysql.Identifier(user))
+                        cur.execute(stmt)
+                        # conn.commit()
+
+                    cur.close()
 
             # for client, database in self.db_names.items():
-            conn = self.connect_db(user=self.db_configs[self.admin_user], database=self.database)
+                    with DatabaseConnection(host=admin_configs['hostname'],
+                                            database=self.database,
+                                            port=admin_configs['port'],
+                                            user=admin_configs['username'],
+                                            password=admin_configs['password']) as conn:
 
-            if conn is not None:
-                conn.autocommit = True
-                cur = conn.cursor()
+                        if conn is not None:
+                            conn.autocommit = True
+                            cur = conn.cursor()
 
-                # Grant usage on schema
-                stmt = psysql.SQL("""GRANT USAGE ON SCHEMA {schema} TO {username};""") \
-                    .format(schema=psysql.Identifier('public'),
-                            username=psysql.Identifier(user))
-                cur.execute(stmt)
+                            # Grant usage on schema
 
-                # Grant SELECT for specified tables
-                read_only_tables = self.db_structure.read_only_tables
-                for table in read_only_tables:
-                    stmt = psysql.SQL("""GRANT SELECT ON {table} TO {username};""") \
-                        .format(table=psysql.Identifier(table),
-                                username=psysql.Identifier(user))
-                    cur.execute(stmt)
+                            stmt = psysql.SQL("""GRANT USAGE ON SCHEMA {schema} TO {username};""") \
+                                .format(schema=psysql.Identifier('public'),
+                                        username=psysql.Identifier(user))
+                            cur.execute(stmt)
+                            # conn.commit()
 
-                conn.close()
+                            # Grant SELECT for specified tables
+                            read_only_tables = self.db_structure.read_only_tables
+                            for table in read_only_tables:
+                                stmt = psysql.SQL("""GRANT SELECT ON {table} TO {username};""") \
+                                    .format(table=psysql.Identifier(table),
+                                            username=psysql.Identifier(user))
+                                cur.execute(stmt)
+                                # conn.commit()
 
-            # Append user passwords to db_configs
-            self.db_configs[user]['password'] = f'{user}_{admin_password}'
+                            cur.close()
+
+                # Append user passwords to db_configs
+                self.db_configs[user]['password'] = f'{user}_{admin_password}'
 
     def _validate_db_user_passwords(self, user):
         # Validate postgres db server password
@@ -130,107 +151,134 @@ class SQL:
                 raise Exception(f'Please supply the correct password for the Postgres Database Server - {user} User')
 
     def test_db_password(self, user):
-        conn = self.connect_db_server(user=self.db_configs[user])
-        if conn:
-            return True
-        else:
-            return False
+        conn_test = None
 
-    @staticmethod
-    def connect_db_server(user):
-        conn = None
-        try:
-            conn = psy.connect(
-                user=user['username'],
-                password=user['password'],
-                host=user['hostname'],
-                port=user['port']
-            )
-        except (Exception, psy.DatabaseError) as error:
-            print(error)
-        return conn
+        user_configs = self.db_configs[user]
 
-    @staticmethod
-    def connect_db(user, database):
-        conn = None
-        try:
-            conn = psy.connect(
-                database=database,
-                user=user['username'],
-                password=user['password'],
-                host=user['hostname'],
-                port=user['port']
-            )
-        except (Exception, psy.DatabaseError) as error:
-            print(error)
-        return conn
+        with DatabaseConnection(host=user_configs['hostname'],
+                                database=None,
+                                port=user_configs['port'],
+                                user=user_configs['username'],
+                                password=user_configs['password']) as conn:
+
+            if conn is not None:
+                conn_test = True
+            else:
+                conn_test = False
+        return conn_test
+
+    # @staticmethod
+    # def connect_db_server(user):
+    #     conn = None
+    #     try:
+    #         conn = psy.connect(
+    #             user=user['username'],
+    #             password=user['password'],
+    #             host=user['hostname'],
+    #             port=user['port']
+    #         )
+    #     except (Exception, psy.DatabaseError) as error:
+    #         print(error)
+    #     return conn
+    #
+    # @staticmethod
+    # def connect_db(user, database):
+    #     conn = None
+    #     try:
+    #         conn = psy.connect(
+    #             database=database,
+    #             user=user['username'],
+    #             password=user['password'],
+    #             host=user['hostname'],
+    #             port=user['port']
+    #         )
+    #     except (Exception, psy.DatabaseError) as error:
+    #         print(error)
+    #     return conn
 
     def create_database(self):
         print(f'\n--- VERIFY THAT {self.database.upper()} DATABASE EXISTS ---')
 
-        # Verify that database exists
-        conn = self.connect_db_server(user=self.db_configs[self.admin_user])
+        admin_configs = self.db_configs[self.admin_user]
         db_exists = None
 
-        if conn is not None:
-            conn.autocommit = True
-            cur = conn.cursor()
-            cur.execute("SELECT datname FROM pg_database;")
-            list_databases = cur.fetchall()
-            check_db = self.database
+        # Verify that database exists
+        with DatabaseConnection(host=admin_configs['hostname'],
+                                database=None,
+                                port=admin_configs['port'],
+                                user=admin_configs['username'],
+                                password=admin_configs['password']) as conn:
 
-            if (check_db,) in list_databases:
-                print(f'\t{check_db} database already exists')
-                db_exists = True
-            else:
-                print(f'\t\t{check_db} database missing')
-                db_exists = False
-                # create database if missing
-                cur.execute(f"CREATE DATABASE {self.database.upper()};")
-                print(f'\tSuccessfully created {check_db} database')
+            if conn is not None:
+                conn.autocommit = True
+                cur = conn.cursor()
+                cur.execute("SELECT datname FROM pg_database;")
+                # conn.commit()
+                list_databases = cur.fetchall()
+                check_db = self.database
 
-            # Close connection
-            cur.close()
-            conn.close()
+                if (check_db,) in list_databases:
+                    print(f'\t{check_db} database already exists')
+                    db_exists = True
+                else:
+                    print(f'\t\t{check_db} database missing')
+                    db_exists = False
+                    # create database if missing
+                    cur.execute(f"CREATE DATABASE {self.database.upper()};")
+                    # conn.commit()
+                    print(f'\tSuccessfully created {check_db} database')
+                cur.close()
 
         # If database is being created, create the postgis extension
         if not db_exists:
-            conn = self.connect_db(user=self.db_configs[self.admin_user], database=self.database)
-            conn.autocommit = True
-            cur = conn.cursor()
-            cur.execute("CREATE EXTENSION postgis;")
-            cur.close()
-            conn.close()
+            with DatabaseConnection(host=admin_configs['hostname'],
+                                    database=self.database,
+                                    port=admin_configs['port'],
+                                    user=admin_configs['username'],
+                                    password=admin_configs['password']) as conn:
+                conn.autocommit = True
+                cur = conn.cursor()
+                cur.execute("CREATE EXTENSION postgis;")
+                # conn.commit()
+                cur.close()
 
     def create_tables(self):
         print(f'\n--- VERIFY THAT {self.database.upper()} DATABASE TABLES EXISTS ---')
 
-        # Create connection
-        conn = self.connect_db(user=self.db_configs[self.admin_user], database=self.database)
+        admin_configs = self.db_configs[self.admin_user]
 
-        if conn is not None:
-            conn.autocommit = True
+        with DatabaseConnection(host=admin_configs['hostname'],
+                                database=self.database,
+                                port=admin_configs['port'],
+                                user=admin_configs['username'],
+                                password=admin_configs['password']) as conn:
 
-            # Loop through list of tables
-            client_db_structure = self.db_structure.db_structure
-            for table, sql_stmt in client_db_structure.items():
+            if conn is not None:
+                conn.autocommit = True
+
                 cur = conn.cursor()
-                cur.execute("""SELECT EXISTS(
-                                            SELECT * 
-                                            FROM information_schema.tables 
-                                            WHERE table_name=%(table)s
-                                            );""",
-                            {'table': table})
-                table_exists = cur.fetchone()[0]
 
-                if table_exists:
-                    print(f'\t{table} table exists')
-                else:
-                    print(f'\t{table} table missing')
+                # Loop through list of tables
+                client_db_structure = self.db_structure.db_structure
+                for table, sql_stmt in client_db_structure.items():
+                    cur.execute("""SELECT EXISTS(
+                                                SELECT * 
+                                                FROM information_schema.tables 
+                                                WHERE table_name=%(table)s
+                                                );""",
+                                {'table': table})
+                    # conn.commit()
+                    table_exists = cur.fetchone()[0]
 
-                    cur.execute(sql_stmt)
-                    print(f'\t\t{table} table created')
-            conn.close()
+                    if table_exists:
+                        print(f'\t{table} table exists')
+                    else:
+                        print(f'\t{table} table missing')
+
+                        cur.execute(sql_stmt)
+                        # conn.commit()
+                        print(f'\t\t{table} table created')
+                cur.close()
 
     def df_insert_to_database(self, dataframe, table_name):
         retry_insert = False
@@ -257,26 +305,31 @@ class SQL:
         # Attempt # 2 (Individual Execution)
         if retry_insert:
             # Create database connection
-            conn = self.connect_db(user=self.db_configs[self.admin_user],
-                                   database=self.database)
-            # Create cursor
-            cur = conn.cursor()
+            admin_configs = self.db_configs[self.admin_user]
 
-            for i, sql_command in enumerate(tqdm(sql_commands,
-                                                 total=len(sql_commands),
-                                                 desc=f'Executing individual INSERT INTO statements for {table_name}')):
-                try:
-                    # Try executing single SQL statement
-                    cur.execute(sql_command)
-                    conn.commit()
-                except:
-                    failures = failures.append(dataframe.iloc[i], ignore_index=True)
+            with DatabaseConnection(host=admin_configs['hostname'],
+                                    database=self.database,
+                                    port=admin_configs['port'],
+                                    user=admin_configs['username'],
+                                    password=admin_configs['password']) as conn:
 
-                    # Clean up SQL Transaction
-                    conn.rollback()
+                for i, sql_command in enumerate(tqdm(sql_commands,
+                                                     total=len(sql_commands),
+                                                     desc=f'Executing individual INSERT INTO statements for {table_name}')):
+                    # Create cursor
+                    conn.autocommit = True
+                    cur = conn.cursor()
 
-            # Close connection
-            conn.close()
+                    try:
+                        # Try executing single SQL statement
+                        cur.execute(sql_command)
+                    except:
+                        failures = failures.append(dataframe.iloc[i], ignore_index=True)
+                        conn.rollback()
+                    # else:
+                    #     conn.commit()
+                    finally:
+                        cur.close()
 
         return failures
 
@@ -312,9 +365,16 @@ class SQL:
 
     def execute_batch_sql_commands(self, sql_commands):
         batch_query = ''.join(sql_commands)
-        conn = self.connect_db(user=self.db_configs[self.admin_user],
-                               database=self.database)
-        cur = conn.cursor()
-        cur.execute(batch_query)
-        conn.commit()
-        conn.close()
+
+        admin_configs = self.db_configs[self.admin_user]
+
+        with DatabaseConnection(host=admin_configs['hostname'],
+                                database=self.database,
+                                port=admin_configs['port'],
+                                user=admin_configs['username'],
+                                password=admin_configs['password']) as conn:
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute(batch_query)
+            # conn.commit()
+            cur.close()
