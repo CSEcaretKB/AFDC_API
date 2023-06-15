@@ -27,6 +27,7 @@ class SQL:
         self.create_database()
         self.create_tables()
         self.create_read_only_users()
+        self.truncate_db()
 
     def extract_db_structure(self):
         self.db_structure = DatabaseStructure()
@@ -378,3 +379,35 @@ class SQL:
             cur.execute(batch_query)
             # conn.commit()
             cur.close()
+
+    def truncate_db(self):
+        print(f'\n--- TRUNCATING EXISTING {self.database.upper()} DATABASE TABLES ---')
+
+        admin_configs = self.db_configs[self.admin_user]
+
+        with DatabaseConnection(host=admin_configs['hostname'],
+                                database=self.database,
+                                port=admin_configs['port'],
+                                user=admin_configs['username'],
+                                password=admin_configs['password']) as conn:
+
+            if conn is not None:
+                conn.autocommit = True
+
+                cur = conn.cursor()
+
+                # Loop through list of tables
+                client_db_structure = self.db_structure.db_structure
+                for table in client_db_structure.keys():
+                    cur.execute("""SELECT EXISTS(
+                                                        SELECT * 
+                                                        FROM information_schema.tables 
+                                                        WHERE table_name=%(table)s
+                                                        );""",
+                                {'table': table})
+                    # conn.commit()
+                    table_exists = cur.fetchone()[0]
+
+                    if table_exists:
+                        cur.execute(f"""TRUNCATE TABLE {table} CASCADE;""")
+                cur.close()
