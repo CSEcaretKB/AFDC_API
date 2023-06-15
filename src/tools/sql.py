@@ -16,8 +16,8 @@ class SQL:
     admin_user = 'postgres'
 
     def __init__(self):
-        self.NAMESPACE = os.environ.get('NAMESPACE')
-        self.DATABASE_NAME = os.environ.get('NAMESPACE')
+        self.NAMESPACE = None
+        self.DATABASE_NAME = os.environ.get('DATABASE_NAME')
         self.database = self.DATABASE_NAME.lower()
         self.db_configs = {}
         self.db_structure = None
@@ -32,14 +32,48 @@ class SQL:
     def extract_db_structure(self):
         self.db_structure = DatabaseStructure()
 
+    def choose_db_to_process(self, db_configs):
+        subset = []
+        db_servers = sorted(list(db_configs['hostname'].keys()))
+
+        for db_server in db_servers:
+            subset.append(f'Database Server: {db_server}')
+
+        user_response = 1
+        if len(subset) > 1:
+            keep_looping = True
+            valid_responses = [str(n + 1) for n in range(len(subset))]
+            while keep_looping:
+                print(f'\nWhich Database Server would you like to add the {os.environ.get(self.DATABASE_NAME)} '
+                      f'database?\nType the number you wish to select and press Enter\n')
+                for ix, value in enumerate(subset):
+                    print(f'{ix + 1}. {value}')
+                print('\n')
+                user_response = input('Choice:\t')
+
+                if user_response in valid_responses:
+                    keep_looping = False
+                else:
+                    print('\nPlease enter a valid response (number only)\n')
+
+        # Extract hostname key and update NAMESPACE env variable
+        response_int = int(user_response) - 1
+        hostname_key = db_servers[response_int]
+        os.environ[f"NAMESPACE_{hostname_key.upper()}"] = f"{os.environ.get('DATABASE_NAME')}_{hostname_key.upper()}"
+        self.NAMESPACE = os.environ.get(f"NAMESPACE_{hostname_key.upper()}")
+
+        return hostname_key
+
     def load_db_configs(self):
         with open(self.sql_config, 'r') as yml:
             db_configs = yaml.full_load(yml)
 
+        hostname_key = self.choose_db_to_process(db_configs=db_configs)
+
         # Create user keys in db_configs
         for user in db_configs['users']:
             self.db_configs[user] = {
-                'hostname': db_configs['hostname'],
+                'hostname': db_configs['hostname'][hostname_key],
                 'port': db_configs['port'],
                 'username': user
             }
@@ -79,7 +113,6 @@ class SQL:
 
                         if not user_exists:
                             stmt = psysql.SQL("""CREATE USER {username} WITH PASSWORD {password};""") \
- \
                                 .format(username=psysql.Identifier(user),
                                         password=psysql.Literal(f'{user}_{admin_password}'))
                         cur.execute(stmt)
@@ -167,35 +200,6 @@ class SQL:
             else:
                 conn_test = False
         return conn_test
-
-    # @staticmethod
-    # def connect_db_server(user):
-    #     conn = None
-    #     try:
-    #         conn = psy.connect(
-    #             user=user['username'],
-    #             password=user['password'],
-    #             host=user['hostname'],
-    #             port=user['port']
-    #         )
-    #     except (Exception, psy.DatabaseError) as error:
-    #         print(error)
-    #     return conn
-    #
-    # @staticmethod
-    # def connect_db(user, database):
-    #     conn = None
-    #     try:
-    #         conn = psy.connect(
-    #             database=database,
-    #             user=user['username'],
-    #             password=user['password'],
-    #             host=user['hostname'],
-    #             port=user['port']
-    #         )
-    #     except (Exception, psy.DatabaseError) as error:
-    #         print(error)
-    #     return conn
 
     def create_database(self):
         print(f'\n--- VERIFY THAT {self.database.upper()} DATABASE EXISTS ---')

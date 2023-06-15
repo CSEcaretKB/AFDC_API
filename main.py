@@ -7,7 +7,7 @@ from src.tools.manager import Manager
 warnings.filterwarnings("ignore")
 
 # Set environment variables
-os.environ['NAMESPACE'] = 'AFDC_API'
+os.environ['DATABASE_NAME'] = 'AFDC_API'
 os.environ['API_NAME'] = 'nrel_api_key'
 
 # Start timing the script

@@ -6,7 +6,7 @@ import json
 
 class API:
     def __init__(self):
-        self.NAMESPACE = f"{os.environ.get('NAMESPACE')}_KEY"
+        self.NAMESPACE = f"{os.environ.get('DATABASE_NAME')}_KEY"
         self.API_NAME = os.environ.get('API_NAME')
         self.base_url = 'https://developer.nrel.gov/api/alt-fuel-stations/v1.json'
         self.api_success_code = 200
